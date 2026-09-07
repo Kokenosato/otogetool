@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>1D200 Random Selector</title>
+<style>
+*{box-sizing:border-box}
+body{
+  margin:0; min-height:100vh; display:flex; justify-content:center;
+  background:#0b1020; color:#eef3ff; font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+.container{width:min(720px,94vw); padding:42px 0}
+h1{text-align:center;font-size:2rem;margin:0 0 8px}
+.subtitle{text-align:center;color:#9da9c7;margin-bottom:28px}
+.card{
+  background:#151d33;border:1px solid #2b3858;border-radius:20px;
+  padding:26px; box-shadow:0 18px 50px rgba(0,0,0,.25)
+}
+.dice{
+  min-height:190px; display:flex; align-items:center; justify-content:center;
+  background:#080d1b;border-radius:16px;border:1px solid #263452;
+  margin-bottom:22px;
+}
+#result{font-size:6rem;font-weight:800;line-height:1;text-align:center}
+.multi-result{display:flex;flex-wrap:wrap;justify-content:center;gap:12px;padding:20px}
+.multi-result span{font-size:3rem;font-weight:800;background:#151d33;border:1px solid #334263;border-radius:12px;padding:10px 18px}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+label{display:block;color:#aeb9d4;font-size:.9rem;margin-bottom:7px}
+input{
+  width:100%;padding:13px 14px;border-radius:10px;border:1px solid #354361;
+  background:#0c1325;color:#fff;font-size:1.05rem;outline:none
+}
+input:focus{border-color:#6d8cff}
+button{
+  width:100%;border:0;border-radius:12px;padding:15px;font-size:1.05rem;
+  font-weight:700;cursor:pointer;background:#6d8cff;color:white;margin-top:18px
+}
+button:hover{filter:brightness(1.08)}
+button:active{transform:translateY(1px)}
+.secondary{background:#293653;margin-top:10px}
+.history{margin-top:26px}
+.history h2{font-size:1.05rem;margin:0 0 10px}
+#historyList{
+  display:flex;flex-wrap:wrap;gap:8px;min-height:38px
+}
+.item{
+  background:#202c48;border:1px solid #334263;border-radius:9px;
+  padding:7px 11px;font-variant-numeric:tabular-nums
+}
+.empty{color:#71809f;font-size:.9rem}
+.error{color:#ff9d9d;text-align:center;margin-top:12px;min-height:1.2em}
+@media(max-width:520px){
+ .controls{grid-template-columns:1fr}
+ #result{font-size:4.5rem}
+ .container{padding:25px 0}
+}
+</style>
+</head>
+<body>
+<main class="container">
+  <h1>🎲 Random Selector</h1>
+  <div class="subtitle">音ゲー用 1D200 ランダム選曲ツール</div>
+
+  <section class="card">
+    <div class="dice"><div id="result">?</div></div>
+
+    <div class="controls">
+      <div>
+        <label for="min">最小値</label>
+        <input id="min" type="number" value="1" min="1">
+      </div>
+      <div>
+        <label for="max">最大値</label>
+        <input id="max" type="number" value="200" min="1">
+      </div>
+      <div>
+        <label for="count">一度に振る回数</label>
+        <input id="count" type="number" value="1" min="1" max="200">
+      </div>
+      <div>
+        <label>重複</label>
+        <div style="display:flex;align-items:center;height:48px;gap:10px;color:#eef3ff">
+          <input id="unique" type="checkbox" checked style="width:20px;height:20px;accent-color:#6d8cff">
+          <span>重複なし</span>
+        </div>
+      </div>
+    </div>
+
+    <button id="roll">🎲 1D200 を振る</button>
+    <button id="clear" class="secondary">履歴をクリア</button>
+    <div id="error" class="error"></div>
+
+    <div class="history">
+      <h2>履歴</h2>
+      <div id="historyList"><span class="empty">まだ結果がありません</span></div>
+    </div>
+  </section>
+</main>
+
+<script>
+const result = document.getElementById("result");
+const minInput = document.getElementById("min");
+const maxInput = document.getElementById("max");
+const historyList = document.getElementById("historyList");
+const error = document.getElementById("error");
+
+let history = JSON.parse(localStorage.getItem("randomHistory") || "[]");
+
+function renderHistory(){
+  historyList.innerHTML = "";
+  if(history.length === 0){
+    historyList.innerHTML = '<span class="empty">まだ結果がありません</span>';
+    return;
+  }
+  history.forEach(n => {
+    const span = document.createElement("span");
+    span.className = "item";
+    span.textContent = n;
+    historyList.appendChild(span);
+  });
+}
+
+function roll(){
+  const min = Number(minInput.value);
+  const max = Number(maxInput.value);
+  const count = Number(document.getElementById("count").value);
+  const unique = document.getElementById("unique").checked;
+  error.textContent = "";
+
+  if(!Number.isInteger(min) || !Number.isInteger(max) || min > max){
+    error.textContent = "最小値と最大値を正しく入力してください。";
+    return;
+  }
+  if(!Number.isInteger(count) || count < 1){
+    error.textContent = "振る回数は1以上にしてください。";
+    return;
+  }
+  const range = max - min + 1;
+  if(unique && count > range){
+    error.textContent = "重複なしの場合、範囲内の数より多くは振れません。";
+    return;
+  }
+
+  const results = [];
+  const used = new Set();
+
+  while(results.length < count){
+    const n = Math.floor(Math.random() * range) + min;
+    if(unique && used.has(n)) continue;
+    used.add(n);
+    results.push(n);
+  }
+
+  if(results.length === 1){
+    result.textContent = results[0];
+  } else {
+    result.innerHTML = '<div class="multi-result">' +
+      results.map(n => `<span>${n}</span>`).join("") +
+      '</div>';
+  }
+
+  history = [...results, ...history].slice(0, 30);
+  localStorage.setItem("randomHistory", JSON.stringify(history));
+  renderHistory();
+}
+
+document.getElementById("roll").addEventListener("click", roll);
+document.getElementById("clear").addEventListener("click", () => {
+  history = [];
+  localStorage.removeItem("randomHistory");
+  renderHistory();
+});
+
+document.addEventListener("keydown", e => {
+  if(e.code === "Space"){
+    e.preventDefault();
+    roll();
+  }
+});
+
+renderHistory();
+</script>
+</body>
+</html>
