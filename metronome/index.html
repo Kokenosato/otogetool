@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🥁 音ゲー用メトロノーム</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#111;color:#eee;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.container{width:min(560px,92%);margin:40px auto}
+h1{text-align:center;font-size:28px;margin:0 0 24px}
+.card{background:#1c1c1c;border:1px solid #333;border-radius:14px;padding:22px}
+.home-button{display:inline-block;margin-bottom:18px;padding:9px 14px;background:#333;color:#fff;text-decoration:none;border-radius:8px;font-size:14px}
+.home-button:hover{background:#555}
+label{display:block;margin:18px 0 8px;font-weight:700}
+.bpm-row{display:flex;gap:8px;align-items:center}
+input[type=number]{width:100%;padding:12px;background:#111;border:1px solid #444;border-radius:8px;color:#fff;font-size:22px;text-align:center}
+.buttons{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:8px}
+button,select{background:#333;color:#fff;border:1px solid #555;border-radius:8px;padding:10px;cursor:pointer}
+button:hover,select:hover{background:#444}
+select{width:100%;font-size:16px}
+input[type=range]{width:100%}
+.value{text-align:center;color:#bbb;margin-top:6px}
+.play{width:100%;font-size:20px;padding:14px;margin-top:22px;background:#2d2d2d}
+.status{text-align:center;margin:22px 0 8px;color:#aaa}
+.dot{width:28px;height:28px;border-radius:50%;background:#444;margin:12px auto;transition:.08s}
+.dot.beat{transform:scale(1.35);background:#fff}
+.info{background:#111;border-radius:10px;padding:14px;margin-top:18px;text-align:center;line-height:1.8}
+.info strong{font-size:22px}
+.small{font-size:13px;color:#888}
+@media(max-width:480px){.buttons{grid-template-columns:repeat(3,1fr)}}
+</style>
+</head>
+<body>
+<div class="container">
+<a href="../" class="home-button">🏠 ホームに戻る</a>
+<h1>🥁 音ゲー用メトロノーム</h1>
+
+<div class="card">
+<label for="bpm">BPM</label>
+<div class="bpm-row">
+<input id="bpm" type="number" min="20" max="400" value="120">
+</div>
+<div class="buttons">
+<button data-delta="-10">−10</button>
+<button data-delta="-5">−5</button>
+<button data-delta="-1">−1</button>
+<button data-delta="1">＋1</button>
+<button data-delta="5">＋5</button>
+<button data-delta="10">＋10</button>
+</div>
+
+<label for="note">音符の細かさ</label>
+<select id="note">
+<option value="1">♩ 4分音符</option>
+<option value="2">♪ 8分音符</option>
+<option value="3">♪ 12分音符</option>
+<option value="4">♬ 16分音符</option>
+<option value="6">♬ 24分音符</option>
+<option value="8">♬ 32分音符</option>
+</select>
+
+<label for="tuplet">連符モード</label>
+<select id="tuplet">
+<option value="1">通常</option>
+<option value="3">3連符</option>
+<option value="5">5連符</option>
+<option value="7">7連符</option>
+</select>
+
+<label for="volume">音量</label>
+<input id="volume" type="range" min="0" max="100" value="80">
+<div class="value"><span id="volumeValue">80</span>%</div>
+
+<button id="play" class="play">▶ 再生</button>
+
+<div class="status" id="status">停止中</div>
+<div class="dot" id="dot"></div>
+
+<div class="info">
+<div>現在の間隔</div>
+<strong id="intervalText">4分音符</strong>
+<div>4分音符換算：<strong id="convertedBpm">BPM 120</strong></div>
+<div class="small" id="msText">500 ms 間隔</div>
+</div>
+</div>
+</div>
+
+<script>
+let audioCtx=null, timer=null, playing=false, beatIndex=0;
+
+const bpmEl=document.getElementById("bpm");
+const noteEl=document.getElementById("note");
+const tupletEl=document.getElementById("tuplet");
+const volumeEl=document.getElementById("volume");
+const volumeValue=document.getElementById("volumeValue");
+const playBtn=document.getElementById("play");
+const statusEl=document.getElementById("status");
+const dot=document.getElementById("dot");
+const intervalText=document.getElementById("intervalText");
+const convertedBpm=document.getElementById("convertedBpm");
+const msText=document.getElementById("msText");
+
+const noteNames={1:"4分音符",2:"8分音符",3:"12分音符",4:"16分音符",6:"24分音符",8:"32分音符"};
+
+function values(){
+  let bpm=Math.min(400,Math.max(20,Number(bpmEl.value)||120));
+  bpmEl.value=bpm;
+  const subdivision=Number(noteEl.value);
+  const tuplet=Number(tupletEl.value);
+  const interval=60000/bpm/subdivision/tuplet;
+  const converted=bpm*subdivision*tuplet;
+  return {bpm,subdivision,tuplet,interval,converted};
+}
+
+function updateDisplay(){
+  const v=values();
+  let name=noteNames[v.subdivision];
+  if(v.tuplet>1) name+="・"+v.tuplet+"連符";
+  intervalText.textContent=name;
+  convertedBpm.textContent="BPM "+v.converted;
+  msText.textContent=v.interval.toFixed(1)+" ms 間隔";
+  volumeValue.textContent=volumeEl.value;
+  if(playing) startTimer();
+}
+
+function beep(){
+  if(!audioCtx) return;
+  const v=values();
+  const osc=audioCtx.createOscillator();
+  const gain=audioCtx.createGain();
+  osc.type="square";
+  osc.frequency.value=(beatIndex%v.subdivision===0)?1000:700;
+  gain.gain.setValueAtTime(Number(volumeEl.value)/1000,audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+0.055);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime+0.06);
+
+  dot.classList.add("beat");
+  setTimeout(()=>dot.classList.remove("beat"),80);
+  beatIndex++;
+}
+
+function startTimer(){
+  if(timer) clearInterval(timer);
+  const v=values();
+  timer=setInterval(beep,v.interval);
+}
+
+async function toggle(){
+  if(!playing){
+    audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();
+    if(audioCtx.state==="suspended") await audioCtx.resume();
+    playing=true; beatIndex=0;
+    playBtn.textContent="⏹ 停止";
+    statusEl.textContent="再生中";
+    beep();
+    startTimer();
+  }else{
+    playing=false;
+    clearInterval(timer); timer=null;
+    playBtn.textContent="▶ 再生";
+    statusEl.textContent="停止中";
+  }
+}
+
+document.querySelectorAll("[data-delta]").forEach(btn=>{
+  btn.addEventListener("click",()=>{
+    bpmEl.value=Math.min(400,Math.max(20,Number(bpmEl.value||120)+Number(btn.dataset.delta)));
+    updateDisplay();
+  });
+});
+[bpmEl,noteEl,tupletEl,volumeEl].forEach(el=>el.addEventListener("input",updateDisplay));
+playBtn.addEventListener("click",toggle);
+bpmEl.addEventListener("keydown",e=>{if(e.key==="Enter")updateDisplay()});
+updateDisplay();
+</script>
+</body>
+</html>
