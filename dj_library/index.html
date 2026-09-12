@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>音ゲーDJ Library</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#111;color:#eee;font-family:system-ui,sans-serif}.wrap{max-width:1050px;margin:auto;padding:28px 16px 50px}
+a{color:#9ecbff}.home{display:inline-block;background:#333;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px;margin-bottom:20px}
+.card{background:#1b1b1b;border:1px solid #333;border-radius:14px;padding:20px;margin-bottom:20px}
+h1{margin:0 0 8px}.sub,.small{color:#aaa}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field{margin-bottom:13px}label{display:block;font-size:14px;color:#ccc;margin-bottom:6px}
+input,textarea{width:100%;padding:11px;border-radius:8px;border:1px solid #444;background:#101010;color:#eee;font-size:15px}textarea{min-height:90px;resize:vertical}
+button{padding:11px 16px;border:0;border-radius:8px;background:#eee;color:#111;font-weight:bold;cursor:pointer}button.secondary{background:#333;color:#eee}button.danger{background:#642323;color:#fff}.actions{display:flex;gap:8px;flex-wrap:wrap}
+.hidden{display:none}.msg{margin-top:12px;color:#bbb;white-space:pre-wrap}.top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.filters{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px}.songs{display:grid;gap:12px}.song{display:grid;grid-template-columns:90px 1fr auto;gap:15px;align-items:center;background:#171717;border:1px solid #333;border-radius:12px;padding:12px}
+.thumb{width:90px;height:65px;object-fit:cover;border-radius:8px;background:#292929}.title{font-size:18px;font-weight:bold}.meta{font-size:13px;color:#aaa;line-height:1.7}.memo{margin-top:6px;white-space:pre-wrap}
+@media(max-width:750px){.grid,.filters{grid-template-columns:1fr}.song{grid-template-columns:70px 1fr}.song .song-actions{grid-column:1/-1}.thumb{width:70px;height:55px}}
+</style>
+</head>
+<body><div class="wrap">
+<a class="home" href="../">🏠 ホームに戻る</a>
+
+<section id="auth" class="card">
+<h1>🎧 音ゲーDJ Library</h1><p class="sub">音ゲーDJ向け 楽曲ライブラリ</p>
+<div class="field"><label>メールアドレス</label><input id="email" type="email" autocomplete="email"></div>
+<div class="field"><label>パスワード</label><input id="password" type="password" autocomplete="current-password"></div>
+<div class="actions"><button id="login">ログイン</button><button id="signup" class="secondary">アカウント作成</button></div>
+<div id="authMsg" class="msg"></div>
+</section>
+
+<section id="app" class="hidden">
+<div class="top"><div><h1>🎧 My DJ Library</h1><div id="who" class="small"></div></div><button id="logout" class="secondary">ログアウト</button></div>
+
+<section class="card"><h2 id="formTitle">＋ 曲を追加</h2>
+<form id="form"><input id="songId" type="hidden">
+<div class="grid">
+<div class="field"><label>曲名 *</label><input id="title" required></div>
+<div class="field"><label>作曲者・アーティスト</label><input id="artist"></div>
+<div class="field"><label>原作音ゲー</label><input id="game" placeholder="CHUNITHM / maimai など"></div>
+<div class="field"><label>ジャンル</label><input id="genre" placeholder="J-CORE / HARDSTYLE など"></div>
+<div class="field"><label>BPM 最小</label><input id="bpmMin" type="number" step="0.01" min="0"></div>
+<div class="field"><label>BPM 最大</label><input id="bpmMax" type="number" step="0.01" min="0"></div>
+<div class="field"><label>長さ（秒）</label><input id="duration" type="number" step="0.01" min="0"></div>
+<div class="field"><label>リンク</label><input id="url" type="url" placeholder="https://..."></div>
+</div>
+<div class="field"><label>サムネイルURL</label><input id="thumbnail" type="url"></div>
+<div class="field"><label>自分用メモ</label><textarea id="memo" placeholder="展開、つなぎやすさ、雰囲気など"></textarea></div>
+<div class="actions"><button id="save">保存</button><button type="button" id="cancel" class="secondary hidden">編集をキャンセル</button></div>
+<div id="songMsg" class="msg"></div>
+</form></section>
+
+<section class="card"><h2>🔍 楽曲検索・絞り込み</h2>
+<div class="filters"><input id="search" placeholder="曲名・アーティスト・メモ"><input id="fgame" placeholder="原作音ゲー"><input id="fgenre" placeholder="ジャンル"><input id="fbpm" type="number" placeholder="BPMを含む"></div>
+<div id="count" class="small"></div></section>
+<div id="songs" class="songs"></div><div id="listMsg" class="msg"></div>
+</section>
+</div>
+
+<script>
+const URL="https://dgoolyfopsrgxsjyqzgp.supabase.co";
+const KEY="sb_publishable_uq3wW_lvkxX8eGU08bplgA_v4ESvZWb";
+const db=supabase.createClient(URL,KEY), $=id=>document.getElementById(id);
+let songs=[];
+
+function msg(id,t){$(id).textContent=t||""}
+function bpmText(a,b){if(a==null&&b==null)return"BPM -";if(a==null)return`BPM ～${b}`;if(b==null)return`BPM ${a}～`;return Number(a)===Number(b)?`BPM ${a}`:`BPM ${a}–${b}`}
+function duration(s){if(s==null||s==="")return"";s=Math.round(Number(s));return`${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`}
+async function ui(){let{data:{session}}=await db.auth.getSession();if(session){$("auth").classList.add("hidden");$("app").classList.remove("hidden");$("who").textContent="ログイン中："+(session.user.email||"");load()}else{$("auth").classList.remove("hidden");$("app").classList.add("hidden")}}
+$("login").onclick=async()=>{msg("authMsg","");let e=$("email").value.trim(),p=$("password").value;if(!e||!p)return msg("authMsg","メールアドレスとパスワードを入力してください。");let{error}=await db.auth.signInWithPassword({email:e,password:p});if(error)return msg("authMsg","ログイン失敗："+error.message);ui()}
+$("signup").onclick=async()=>{msg("authMsg","");let e=$("email").value.trim(),p=$("password").value;if(!e||!p)return msg("authMsg","メールアドレスとパスワードを入力してください。");if(p.length<6)return msg("authMsg","パスワードは6文字以上にしてください。");let{data,error}=await db.auth.signUp({email:e,password:p,options:{emailRedirectTo:location.href}});if(error)return msg("authMsg","アカウント作成失敗："+error.message);msg("authMsg",data.session?"アカウントを作成しました！":"確認メールを送信しました。メール内のリンクから確認してください。");if(data.session)ui()}
+$("logout").onclick=async()=>{await db.auth.signOut();$("form").reset();resetEdit();ui()}
+db.auth.onAuthStateChange(()=>ui());
+
+$("form").onsubmit=async ev=>{ev.preventDefault();msg("songMsg","");let{data:{user}}=await db.auth.getUser();if(!user)return msg("songMsg","ログインしてください。");
+let id=$("songId").value,a=$("bpmMin").value===""?null:Number($("bpmMin").value),b=$("bpmMax").value===""?null:Number($("bpmMax").value);
+if(a!=null&&b!=null&&a>b)return msg("songMsg","BPM最小値は最大値以下にしてください。");
+let song={title:$("title").value.trim(),artist:$("artist").value.trim()||null,game:$("game").value.trim()||null,bpm_min:a,bpm_max:b,genre:$("genre").value.trim()||null,duration:$("duration").value===""?null:Number($("duration").value),memo:$("memo").value.trim()||null,url:$("url").value.trim()||null,thumbnail:$("thumbnail").value.trim()||null};
+let r=id?await db.from("songs").update(song).eq("id",id).eq("user_id",user.id):await db.from("songs").insert({...song,user_id:user.id});
+if(r.error)return msg("songMsg","保存失敗："+r.error.message);msg("songMsg",id?"更新しました！":"保存しました！");$("form").reset();resetEdit();load()}
+
+function resetEdit(){$("songId").value="";$("formTitle").textContent="＋ 曲を追加";$("save").textContent="保存";$("cancel").classList.add("hidden")}
+$("cancel").onclick=()=>{$("form").reset();resetEdit()}
+
+async function load(){let{data,error}=await db.from("songs").select("*").order("created_at",{ascending:false});if(error){songs=[];return msg("listMsg","楽曲取得失敗："+error.message)}songs=data||[];render()}
+function render(){let q=$("search").value.trim().toLowerCase(),g=$("fgame").value.trim().toLowerCase(),ge=$("fgenre").value.trim().toLowerCase(),b=$("fbpm").value===""?null:Number($("fbpm").value);
+let list=songs.filter(s=>{let t=[s.title,s.artist,s.game,s.genre,s.memo].filter(Boolean).join(" ").toLowerCase();if(q&&!t.includes(q))return false;if(g&&!(s.game||"").toLowerCase().includes(g))return false;if(ge&&!(s.genre||"").toLowerCase().includes(ge))return false;if(b!=null){if(s.bpm_min==null&&s.bpm_max==null)return false;if(s.bpm_min!=null&&b<Number(s.bpm_min))return false;if(s.bpm_max!=null&&b>Number(s.bpm_max))return false}return true});
+$("count").textContent=`${list.length}曲 / ${songs.length}曲`;$("songs").innerHTML="";if(!list.length){$("songs").innerHTML='<div class="card">該当する楽曲がありません。</div>';return}
+list.forEach(s=>{let x=document.createElement("article");x.className="song";let im=document.createElement("img");im.className="thumb";im.src=s.thumbnail||"";im.alt="";im.onerror=()=>im.style.visibility="hidden";
+let body=document.createElement("div"),t=document.createElement("div");t.className="title";t.textContent=s.title||"無題";body.append(t);let m=document.createElement("div");m.className="meta";m.textContent=[s.artist&&`作曲者：${s.artist}`,s.game&&`🎮 ${s.game}`,s.genre&&`🎵 ${s.genre}`,bpmText(s.bpm_min,s.bpm_max),s.duration!=null&&`⏱ ${duration(s.duration)}`].filter(Boolean).join("  |  ");body.append(m);
+if(s.memo){let z=document.createElement("div");z.className="memo";z.textContent=s.memo;body.append(z)}if(s.url){let l=document.createElement("a");l.href=s.url;l.target="_blank";l.rel="noopener";l.textContent="🔗 リンクを開く";body.append(l)}
+let ac=document.createElement("div");ac.className="actions song-actions";let ed=document.createElement("button");ed.className="secondary";ed.textContent="編集";ed.onclick=()=>edit(s);let de=document.createElement("button");de.className="danger";de.textContent="削除";de.onclick=()=>del(s);ac.append(ed,de);x.append(im,body,ac);$("songs").append(x)})}
+function edit(s){$("songId").value=s.id;$("title").value=s.title||"";$("artist").value=s.artist||"";$("game").value=s.game||"";$("genre").value=s.genre||"";$("bpmMin").value=s.bpm_min??"";$("bpmMax").value=s.bpm_max??"";$("duration").value=s.duration??"";$("url").value=s.url||"";$("thumbnail").value=s.thumbnail||"";$("memo").value=s.memo||"";$("formTitle").textContent="✏️ 曲を編集";$("save").textContent="更新";$("cancel").classList.remove("hidden");scrollTo({top:0,behavior:"smooth"})}
+async function del(s){if(!confirm(`「${s.title}」を削除しますか？`))return;let{error}=await db.from("songs").delete().eq("id",s.id);if(error)return msg("listMsg","削除失敗："+error.message);load()}
+["search","fgame","fgenre","fbpm"].forEach(id=>$(id).oninput=render);
+ui();
+</script></body></html>
