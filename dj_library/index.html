@@ -414,15 +414,104 @@ $("signup").onclick=async()=>{msg("authMsg","");let e=$("email").value.trim(),p=
 $("logout").onclick=async()=>{await db.auth.signOut();$("form").reset();resetEdit();ui()}
 db.auth.onAuthStateChange(()=>ui());
 
-$("form").onsubmit=async ev=>{ev.preventDefault();msg("songMsg","");let{data:{user}}=await db.auth.getUser();if(!user)return msg("songMsg","ログインしてください。");
-let id=$("songId").value,a=$("bpmMin").value===""?null:Number($("bpmMin").value),b=$("bpmMax").value===""?null:Number($("bpmMax").value);
-if(a!=null&&b!=null&&a>b)return msg("songMsg","BPM最小値は最大値以下にしてください。");
-let song={title:$("title").value.trim(),artist:$("artist").value.trim()||null,game:$("game").value.trim()||null,bpm_min:a,bpm_max:b,genre:$("genre").value.trim()||null,duration:$("duration").value===""?null:Number($("duration").value),memo:$("memo").value.trim()||null,url:$("url").value.trim()||null,thumbnail:$("thumbnail").value.trim()||null};
-let r=id?await db.from("songs").update(song).eq("id",id).eq("user_id",user.id):await db.from("songs").insert({...song,user_id:user.id});
-if(r.error)return msg("songMsg","保存失敗："+r.error.message);msg("songMsg",id?"更新しました！":"保存しました！");$("form").reset();resetEdit();load()}
+$("form").onsubmit = async ev => {
+    ev.preventDefault();
+    msg("songMsg", "");
 
-function resetEdit(){$("songId").value="";$("formTitle").textContent="＋ 曲を追加";$("save").textContent="保存";$("cancel").classList.add("hidden")}
-$("cancel").onclick=()=>{$("form").reset();resetEdit()}
+    let { data: { user } } = await db.auth.getUser();
+
+    if(!user){
+        return msg("songMsg", "ログインしてください。");
+    }
+
+    const id = $("songId").value;
+
+    const a = $("bpmMin").value === ""
+        ? null
+        : Number($("bpmMin").value);
+
+    const b = $("bpmMax").value === ""
+        ? null
+        : Number($("bpmMax").value);
+
+    if(a != null && b != null && a > b){
+        return msg(
+            "songMsg",
+            "BPM最小値は最大値以下にしてください。"
+        );
+    }
+
+    const song = {
+        title: $("title").value.trim(),
+
+        // タグ
+        artist_tags: [...tagState.artist],
+        game_tags: [...tagState.game],
+        genre_tags: [...tagState.genre],
+        memo_tags: [...tagState.memo],
+
+        bpm_min: a,
+        bpm_max: b,
+
+        duration: $("duration").value === ""
+            ? null
+            : Number($("duration").value),
+
+        // 詳細メモ
+        memo: $("memo").value.trim() || null,
+
+        url: $("url").value.trim() || null,
+        thumbnail: $("thumbnail").value.trim() || null
+    };
+
+    let r;
+
+    if(id){
+        r = await db
+            .from("songs")
+            .update(song)
+            .eq("id", id)
+            .eq("user_id", user.id);
+    }else{
+        r = await db
+            .from("songs")
+            .insert({
+                ...song,
+                user_id: user.id
+            });
+    }
+
+    if(r.error){
+        return msg(
+            "songMsg",
+            "保存失敗：" + r.error.message
+        );
+    }
+
+    msg(
+        "songMsg",
+        id ? "更新しました！" : "保存しました！"
+    );
+
+    $("form").reset();
+    clearTags();
+    resetEdit();
+
+    load();
+};
+
+function resetEdit(){
+    $("songId").value = "";
+    $("formTitle").textContent = "＋ 曲を追加";
+    $("save").textContent = "保存";
+    $("cancel").classList.add("hidden");
+}
+
+$("cancel").onclick = () => {
+    $("form").reset();
+    clearTags();
+    resetEdit();
+};
 
 async function load(){let{data,error}=await db.from("songs").select("*").order("created_at",{ascending:false});if(error){songs=[];return msg("listMsg","楽曲取得失敗："+error.message)}songs=data||[];render();buildAllSuggestions()}
 function render(){let q=$("search").value.trim().toLowerCase(),g=$("fgame").value.trim().toLowerCase(),ge=$("fgenre").value.trim().toLowerCase(),b=$("fbpm").value===""?null:Number($("fbpm").value);
@@ -432,7 +521,60 @@ list.forEach(s=>{let x=document.createElement("article");x.className="song";let 
 let body=document.createElement("div"),t=document.createElement("div");t.className="title";t.textContent=s.title||"無題";body.append(t);let m=document.createElement("div");m.className="meta";m.textContent=[s.artist&&`作曲者：${s.artist}`,s.game&&`🎮 ${s.game}`,s.genre&&`🎵 ${s.genre}`,bpmText(s.bpm_min,s.bpm_max),s.duration!=null&&`⏱ ${duration(s.duration)}`].filter(Boolean).join("  |  ");body.append(m);
 if(s.memo){let z=document.createElement("div");z.className="memo";z.textContent=s.memo;body.append(z)}if(s.url){let l=document.createElement("a");l.href=s.url;l.target="_blank";l.rel="noopener";l.textContent="🔗 リンクを開く";body.append(l)}
 let ac=document.createElement("div");ac.className="actions song-actions";let ed=document.createElement("button");ed.className="secondary";ed.textContent="編集";ed.onclick=()=>edit(s);let de=document.createElement("button");de.className="danger";de.textContent="削除";de.onclick=()=>del(s);ac.append(ed,de);x.append(im,body,ac);$("songs").append(x)})}
-function edit(s){$("songId").value=s.id;$("title").value=s.title||"";$("artist").value=s.artist||"";$("game").value=s.game||"";$("genre").value=s.genre||"";$("bpmMin").value=s.bpm_min??"";$("bpmMax").value=s.bpm_max??"";$("duration").value=s.duration??"";$("url").value=s.url||"";$("thumbnail").value=s.thumbnail||"";$("memo").value=s.memo||"";$("formTitle").textContent="✏️ 曲を編集";$("save").textContent="更新";$("cancel").classList.remove("hidden");scrollTo({top:0,behavior:"smooth"})}
+function edit(s){
+    $("songId").value = s.id;
+
+    $("title").value = s.title || "";
+
+    // タグを読み込む
+    tagState.artist = Array.isArray(s.artist_tags)
+        ? [...s.artist_tags]
+        : [];
+
+    tagState.game = Array.isArray(s.game_tags)
+        ? [...s.game_tags]
+        : [];
+
+    tagState.genre = Array.isArray(s.genre_tags)
+        ? [...s.genre_tags]
+        : [];
+
+    tagState.memo = Array.isArray(s.memo_tags)
+        ? [...s.memo_tags]
+        : [];
+
+    // タグを画面に表示
+    renderTags("artist");
+    renderTags("game");
+    renderTags("genre");
+    renderTags("memo");
+
+    // タグ入力欄は空にする
+    $("artistInput").value = "";
+    $("gameInput").value = "";
+    $("genreInput").value = "";
+    $("memoInput").value = "";
+
+    // その他の項目
+    $("bpmMin").value = s.bpm_min ?? "";
+    $("bpmMax").value = s.bpm_max ?? "";
+    $("duration").value = s.duration ?? "";
+    $("url").value = s.url || "";
+    $("thumbnail").value = s.thumbnail || "";
+    $("memo").value = s.memo || "";
+
+    // 編集モードに変更
+    $("formTitle").textContent = "✏️ 曲を編集";
+    $("save").textContent = "更新";
+    $("cancel").classList.remove("hidden");
+
+    buildAllSuggestions();
+
+    scrollTo({
+        top: 0,
+        behavior: "smooth"
+    });
+}
 async function del(s){if(!confirm(`「${s.title}」を削除しますか？`))return;let{error}=await db.from("songs").delete().eq("id",s.id);if(error)return msg("listMsg","削除失敗："+error.message);load()}
 ["search","fgame","fgenre","fbpm"].forEach(id=>$(id).oninput=render);
 ["artist","game","genre","memo"].forEach(type => {
