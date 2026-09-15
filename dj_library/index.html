@@ -38,6 +38,54 @@ button{padding:11px 16px;border:0;border-radius:8px;background:#eee;color:#111;f
 .search-btn:hover{
     background:#333;
 }
+
+.tag-container{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-bottom:8px;
+    min-height:0;
+}
+
+.tag{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    padding:6px 10px;
+    border-radius:999px;
+    background:#2a2a2a;
+    border:1px solid #555;
+    font-size:14px;
+}
+
+.tag-remove{
+    border:none;
+    background:transparent;
+    color:#aaa;
+    cursor:pointer;
+    padding:0;
+    font-size:14px;
+}
+
+.tag-remove:hover{
+    color:#fff;
+}
+
+.tag-input-row{
+    display:flex;
+    gap:8px;
+}
+
+.tag-input-row input{
+    flex:1;
+    min-width:0;
+}
+
+.tag-add-btn{
+    width:42px;
+    flex-shrink:0;
+}
+  
 </style>
 </head>
 <body><div class="wrap">
@@ -68,16 +116,67 @@ button{padding:11px 16px;border:0;border-radius:8px;background:#eee;color:#111;f
     <button type="button" class="search-btn" onclick="searchWiki()">Wiki</button>
 </div>
 </div>
-<div class="field"><label>作曲者・アーティスト</label><input id="artist"><div id="artistSuggestions" class="suggestions"></div></div>
-<div class="field"><label>原作音ゲー</label><input id="game" placeholder="CHUNITHM / maimai など"><div id="gameSuggestions" class="suggestions"></div></div>
-<div class="field"><label>ジャンル</label><input id="genre" placeholder="J-CORE / HARDSTYLE など"><div id="genreSuggestions" class="suggestions"></div></div>
+<div class="field tag-field">
+    <label>作曲者・アーティスト</label>
+
+    <div id="artistTags" class="tag-container"></div>
+
+    <div class="tag-input-row">
+        <input id="artistInput" maxlength="20" placeholder="タグを入力">
+        <button type="button" class="tag-add-btn" onclick="addTag('artist')">＋</button>
+    </div>
+
+    <div id="artistSuggestions" class="suggestions"></div>
+</div>
+
+<div class="field tag-field">
+    <label>原作音ゲー</label>
+
+    <div id="gameTags" class="tag-container"></div>
+
+    <div class="tag-input-row">
+        <input id="gameInput" maxlength="20" placeholder="タグを入力">
+        <button type="button" class="tag-add-btn" onclick="addTag('game')">＋</button>
+    </div>
+
+    <div id="gameSuggestions" class="suggestions"></div>
+</div>
+
+<div class="field tag-field">
+    <label>ジャンル</label>
+
+    <div id="genreTags" class="tag-container"></div>
+
+    <div class="tag-input-row">
+        <input id="genreInput" maxlength="20" placeholder="タグを入力">
+        <button type="button" class="tag-add-btn" onclick="addTag('genre')">＋</button>
+    </div>
+
+    <div id="genreSuggestions" class="suggestions"></div>
+</div>
 <div class="field"><label>BPM 最小</label><input id="bpmMin" type="number" step="0.01" min="0"></div>
 <div class="field"><label>BPM 最大</label><input id="bpmMax" type="number" step="0.01" min="0"></div>
 <div class="field"><label>長さ（秒）</label><input id="duration" type="number" step="0.01" min="0"></div>
 <div class="field"><label>リンク</label><input id="url" type="url" placeholder="https://..."></div>
 </div>
 <div class="field"><label>サムネイルURL</label><input id="thumbnail" type="url"></div>
-<div class="field"><label>自分用メモ</label><textarea id="memo" placeholder="展開、つなぎやすさ、雰囲気など"></textarea></div>
+<div class="field tag-field">
+    <label>メモタグ</label>
+
+    <div id="memoTags" class="tag-container"></div>
+
+    <div class="tag-input-row">
+        <input id="memoInput" maxlength="20" placeholder="高速・盛り上がる・繋ぎやすい など">
+        <button type="button" class="tag-add-btn" onclick="addTag('memo')">＋</button>
+    </div>
+
+    <div id="memoSuggestions" class="suggestions"></div>
+</div>
+
+<div class="field">
+    <label>詳細メモ</label>
+    <textarea id="memo" placeholder="展開、つなぎ方、雰囲気などを自由に入力"></textarea>
+</div>
 <div class="actions"><button id="save">保存</button><button type="button" id="cancel" class="secondary hidden">編集をキャンセル</button></div>
 <div id="songMsg" class="msg"></div>
 </form></section>
@@ -94,6 +193,81 @@ const SUPABASE_URL="https://dgoolyfopsrgxsjyqzgp.supabase.co";
 const KEY="sb_publishable_uq3wW_lvkxX8eGU08bplgA_v4ESvZWb";
 const db=supabase.createClient(SUPABASE_URL,KEY), $=id=>document.getElementById(id);
 let songs=[];
+
+let tagState = {
+    artist: [],
+    game: [],
+    genre: [],
+    memo: []
+};
+
+function renderTags(type){
+    const box = $(type + "Tags");
+    box.innerHTML = "";
+
+    tagState[type].forEach((tag, index) => {
+        const el = document.createElement("span");
+        el.className = "tag";
+
+        const text = document.createElement("span");
+        text.textContent = tag;
+
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "tag-remove";
+        remove.textContent = "×";
+        remove.onclick = () => {
+            tagState[type].splice(index, 1);
+            renderTags(type);
+            buildAllSuggestions();
+        };
+
+        el.append(text, remove);
+        box.append(el);
+    });
+}
+
+function addTag(type){
+    const input = $(type + "Input");
+    const value = input.value.trim();
+
+    if(!value) return;
+
+    if(value.length > 20){
+        return msg("songMsg", "タグは20文字以内にしてください。");
+    }
+
+    if(tagState[type].includes(value)){
+        input.value = "";
+        return;
+    }
+
+    tagState[type].push(value);
+    input.value = "";
+
+    renderTags(type);
+    buildAllSuggestions();
+}
+
+function clearTags(){
+    tagState = {
+        artist: [],
+        game: [],
+        genre: [],
+        memo: []
+    };
+
+    ["artist","game","genre","memo"].forEach(renderTags);
+}
+
+["artist","game","genre","memo"].forEach(type => {
+    $(type + "Input").addEventListener("keydown", e => {
+        if(e.key === "Enter"){
+            e.preventDefault();
+            addTag(type);
+        }
+    });
+});
 
 function searchWiki(){
     const title = $("title").value.trim();
