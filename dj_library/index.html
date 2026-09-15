@@ -271,7 +271,6 @@ function clearTags(){
 
 function searchWiki(){
     const title = $("title").value.trim();
-    const game = $("game").value.trim();
 
     if(!title){
         return msg("songMsg","まず曲名を入力してください。");
@@ -279,8 +278,9 @@ function searchWiki(){
 
     let query = title;
 
-    if(game){
-        query += " " + game;
+    // 現在入力中の原作音ゲータグを検索条件に追加
+    if(tagState.game.length){
+        query += " " + tagState.game.join(" ");
     }else{
         query += " 音ゲー";
     }
@@ -322,23 +322,90 @@ function searchGoogle(){
 function msg(id,t){$(id).textContent=t||""}
 function bpmText(a,b){if(a==null&&b==null)return"BPM -";if(a==null)return`BPM ～${b}`;if(b==null)return`BPM ${a}～`;return Number(a)===Number(b)?`BPM ${a}`:`BPM ${a}–${b}`}
 function duration(s){if(s==null||s==="")return"";s=Math.round(Number(s));return`${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`}
-function buildSuggestions(field,inputId,boxId){
-  const counts=new Map(), latest=new Map();
-  songs.forEach((s,i)=>{const v=(s[field]||"").trim();if(!v)return;const key=v.toLowerCase();counts.set(key,(counts.get(key)||0)+1);if(!latest.has(key))latest.set(key,{value:v,index:i});});
-  const typed=$(inputId).value.trim().toLowerCase();
-  const items=[...counts.keys()].map(key=>({key,value:latest.get(key).value,count:counts.get(key),index:latest.get(key).index}))
-    .filter(x=>!typed||x.value.toLowerCase().includes(typed))
-    .sort((a,b)=>b.count-a.count||a.index-b.index||a.value.localeCompare(b.value))
-    .slice(0,12);
-  const box=$(boxId);box.innerHTML="";
-  if(!items.length)return;
-  const label=document.createElement("span");label.className="suggestion-label";label.textContent="過去の入力：";box.append(label);
-  items.forEach(x=>{const btn=document.createElement("button");btn.type="button";btn.className="suggestion";btn.textContent=x.value;btn.onclick=()=>{$(inputId).value=x.value;buildAllSuggestions()};box.append(btn)});
+function buildSuggestions(type){
+    const field = type + "_tags";
+    const inputId = type + "Input";
+    const boxId = type + "Suggestions";
+
+    const counts = new Map();
+    const latest = new Map();
+
+    songs.forEach((s, i) => {
+        const values = Array.isArray(s[field]) ? s[field] : [];
+
+        values.forEach(v => {
+            const value = String(v).trim();
+            if(!value) return;
+
+            const key = value.toLowerCase();
+
+            counts.set(key, (counts.get(key) || 0) + 1);
+
+            if(!latest.has(key)){
+                latest.set(key, {
+                    value: value,
+                    index: i
+                });
+            }
+        });
+    });
+
+    const typed = $(inputId).value.trim().toLowerCase();
+
+    const items = [...counts.keys()]
+        .map(key => ({
+            key,
+            value: latest.get(key).value,
+            count: counts.get(key),
+            index: latest.get(key).index
+        }))
+        .filter(x =>
+            !typed ||
+            x.value.toLowerCase().includes(typed)
+        )
+        .sort((a,b) =>
+            b.count - a.count ||
+            a.index - b.index ||
+            a.value.localeCompare(b.value)
+        )
+        .slice(0, 12);
+
+    const box = $(boxId);
+    box.innerHTML = "";
+
+    if(!items.length) return;
+
+    const label = document.createElement("span");
+    label.className = "suggestion-label";
+    label.textContent = "過去の入力：";
+
+    box.append(label);
+
+    items.forEach(x => {
+        const btn = document.createElement("button");
+
+        btn.type = "button";
+        btn.className = "suggestion";
+        btn.textContent = x.value;
+
+        btn.onclick = () => {
+            if(!tagState[type].includes(x.value)){
+                tagState[type].push(x.value);
+                renderTags(type);
+            }
+
+            $(inputId).value = "";
+            buildAllSuggestions();
+        };
+
+        box.append(btn);
+    });
 }
 function buildAllSuggestions(){
-  buildSuggestions("artist","artist","artistSuggestions");
-  buildSuggestions("game","game","gameSuggestions");
-  buildSuggestions("genre","genre","genreSuggestions");
+    buildSuggestions("artist");
+    buildSuggestions("game");
+    buildSuggestions("genre");
+    buildSuggestions("memo");
 }
 
 async function ui(){let{data:{session}}=await db.auth.getSession();if(session){$("auth").classList.add("hidden");$("app").classList.remove("hidden");$("who").textContent="ログイン中："+(session.user.email||"");load()}else{$("auth").classList.remove("hidden");$("app").classList.add("hidden")}}
@@ -368,6 +435,10 @@ let ac=document.createElement("div");ac.className="actions song-actions";let ed=
 function edit(s){$("songId").value=s.id;$("title").value=s.title||"";$("artist").value=s.artist||"";$("game").value=s.game||"";$("genre").value=s.genre||"";$("bpmMin").value=s.bpm_min??"";$("bpmMax").value=s.bpm_max??"";$("duration").value=s.duration??"";$("url").value=s.url||"";$("thumbnail").value=s.thumbnail||"";$("memo").value=s.memo||"";$("formTitle").textContent="✏️ 曲を編集";$("save").textContent="更新";$("cancel").classList.remove("hidden");scrollTo({top:0,behavior:"smooth"})}
 async function del(s){if(!confirm(`「${s.title}」を削除しますか？`))return;let{error}=await db.from("songs").delete().eq("id",s.id);if(error)return msg("listMsg","削除失敗："+error.message);load()}
 ["search","fgame","fgenre","fbpm"].forEach(id=>$(id).oninput=render);
-["artist","game","genre"].forEach(id=>$(id).oninput=buildAllSuggestions);
+["artist","game","genre","memo"].forEach(type => {
+    $(type + "Input").addEventListener("input", () => {
+        buildSuggestions(type);
+    });
+});
 ui();
 </script></body></html>
