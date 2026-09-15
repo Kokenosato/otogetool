@@ -121,12 +121,19 @@ function searchGoogle(){
 
 function searchWiki(){
     const title = $("title").value.trim();
+    const game = $("game").value.trim();
 
     if(!title){
         return msg("songMsg","まず曲名を入力してください。");
     }
 
-    const query = title + " 音ゲー Wiki";
+    let query;
+
+    if(game){
+        query = title + " " + game + " Wiki";
+    }else{
+        query = title + " 音ゲー Wiki";
+    }
 
     window.open(
         "https://www.google.com/search?q="+encodeURIComponent(query),
