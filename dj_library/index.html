@@ -95,6 +95,30 @@ const KEY="sb_publishable_uq3wW_lvkxX8eGU08bplgA_v4ESvZWb";
 const db=supabase.createClient(SUPABASE_URL,KEY), $=id=>document.getElementById(id);
 let songs=[];
 
+function searchWiki(){
+    const title = $("title").value.trim();
+    const game = $("game").value.trim();
+
+    if(!title){
+        return msg("songMsg","まず曲名を入力してください。");
+    }
+
+    let query = title;
+
+    if(game){
+        query += " " + game;
+    }else{
+        query += " 音ゲー";
+    }
+
+    query += " Wiki";
+
+    window.open(
+        "https://www.google.com/search?q=" + encodeURIComponent(query),
+        "_blank"
+    );
+}
+
 function searchYouTube(){
     const title=$("title").value.trim();
     if(!title){
@@ -119,27 +143,7 @@ function searchGoogle(){
     );
 }
 
-function searchWiki(){
-    const title = $("title").value.trim();
-    const game = $("game").value.trim();
 
-    if(!title){
-        return msg("songMsg","まず曲名を入力してください。");
-    }
-
-    let query;
-
-    if(game){
-        query = title + " " + game + " Wiki";
-    }else{
-        query = title + " 音ゲー Wiki";
-    }
-
-    window.open(
-        "https://www.google.com/search?q="+encodeURIComponent(query),
-        "_blank"
-    );
-}
 
 function msg(id,t){$(id).textContent=t||""}
 function bpmText(a,b){if(a==null&&b==null)return"BPM -";if(a==null)return`BPM ～${b}`;if(b==null)return`BPM ${a}～`;return Number(a)===Number(b)?`BPM ${a}`:`BPM ${a}–${b}`}
