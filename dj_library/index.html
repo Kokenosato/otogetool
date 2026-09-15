@@ -16,6 +16,28 @@ button{padding:11px 16px;border:0;border-radius:8px;background:#eee;color:#111;f
 .filters{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px}.songs{display:grid;gap:12px}.song{display:grid;grid-template-columns:90px 1fr auto;gap:15px;align-items:center;background:#171717;border:1px solid #333;border-radius:12px;padding:12px}
 .thumb{width:90px;height:65px;object-fit:cover;border-radius:8px;background:#292929}.title{font-size:18px;font-weight:bold}.meta{font-size:13px;color:#aaa;line-height:1.7}.memo{margin-top:6px;white-space:pre-wrap}
 @media(max-width:750px){.grid,.filters{grid-template-columns:1fr}.song{grid-template-columns:70px 1fr}.song .song-actions{grid-column:1/-1}.thumb{width:70px;height:55px}}
+
+  .search-links{
+    display:flex;
+    gap:7px;
+    flex-wrap:wrap;
+    align-items:center;
+    margin-top:8px;
+}
+
+.search-btn{
+    padding:7px 11px;
+    border:1px solid #444;
+    border-radius:999px;
+    background:#222;
+    color:#ddd;
+    font-size:13px;
+    font-weight:600;
+}
+
+.search-btn:hover{
+    background:#333;
+}
 </style>
 </head>
 <body><div class="wrap">
@@ -35,7 +57,16 @@ button{padding:11px 16px;border:0;border-radius:8px;background:#eee;color:#111;f
 <section class="card"><h2 id="formTitle">＋ 曲を追加</h2>
 <form id="form"><input id="songId" type="hidden">
 <div class="grid">
-<div class="field"><label>曲名 *</label><input id="title" required></div>
+<div class="field">
+    <label>曲名 *</label>
+    <input id="title" required>
+
+    <div class="search-links">
+        <span>🔎 検索：</span>
+        <button type="button" class="search-btn" onclick="searchYouTube()">YouTube</button>
+        <button type="button" class="search-btn" onclick="searchGoogle()">Google</button>
+    </div>
+</div>
 <div class="field"><label>作曲者・アーティスト</label><input id="artist"><div id="artistSuggestions" class="suggestions"></div></div>
 <div class="field"><label>原作音ゲー</label><input id="game" placeholder="CHUNITHM / maimai など"><div id="gameSuggestions" class="suggestions"></div></div>
 <div class="field"><label>ジャンル</label><input id="genre" placeholder="J-CORE / HARDSTYLE など"><div id="genreSuggestions" class="suggestions"></div></div>
@@ -62,6 +93,30 @@ const SUPABASE_URL="https://dgoolyfopsrgxsjyqzgp.supabase.co";
 const KEY="sb_publishable_uq3wW_lvkxX8eGU08bplgA_v4ESvZWb";
 const db=supabase.createClient(SUPABASE_URL,KEY), $=id=>document.getElementById(id);
 let songs=[];
+
+function searchYouTube(){
+    const title=$("title").value.trim();
+    if(!title){
+        return msg("songMsg","まず曲名を入力してください。");
+    }
+
+    window.open(
+        "https://www.youtube.com/results?search_query="+encodeURIComponent(title),
+        "_blank"
+    );
+}
+
+function searchGoogle(){
+    const title=$("title").value.trim();
+    if(!title){
+        return msg("songMsg","まず曲名を入力してください。");
+    }
+
+    window.open(
+        "https://www.google.com/search?q="+encodeURIComponent(title),
+        "_blank"
+    );
+}
 
 function msg(id,t){$(id).textContent=t||""}
 function bpmText(a,b){if(a==null&&b==null)return"BPM -";if(a==null)return`BPM ～${b}`;if(b==null)return`BPM ${a}～`;return Number(a)===Number(b)?`BPM ${a}`:`BPM ${a}–${b}`}
