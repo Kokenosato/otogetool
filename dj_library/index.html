@@ -62,10 +62,11 @@ button{padding:11px 16px;border:0;border-radius:8px;background:#eee;color:#111;f
     <input id="title" required>
 
     <div class="search-links">
-        <span>🔎 検索：</span>
-        <button type="button" class="search-btn" onclick="searchYouTube()">YouTube</button>
-        <button type="button" class="search-btn" onclick="searchGoogle()">Google</button>
-    </div>
+    <span>🔎 検索：</span>
+    <button type="button" class="search-btn" onclick="searchYouTube()">YouTube</button>
+    <button type="button" class="search-btn" onclick="searchGoogle()">Google</button>
+    <button type="button" class="search-btn" onclick="searchWiki()">Wiki</button>
+</div>
 </div>
 <div class="field"><label>作曲者・アーティスト</label><input id="artist"><div id="artistSuggestions" class="suggestions"></div></div>
 <div class="field"><label>原作音ゲー</label><input id="game" placeholder="CHUNITHM / maimai など"><div id="gameSuggestions" class="suggestions"></div></div>
@@ -114,6 +115,21 @@ function searchGoogle(){
 
     window.open(
         "https://www.google.com/search?q="+encodeURIComponent(title),
+        "_blank"
+    );
+}
+
+function searchWiki(){
+    const title = $("title").value.trim();
+
+    if(!title){
+        return msg("songMsg","まず曲名を入力してください。");
+    }
+
+    const query = title + " 音ゲー Wiki";
+
+    window.open(
+        "https://www.google.com/search?q="+encodeURIComponent(query),
         "_blank"
     );
 }
