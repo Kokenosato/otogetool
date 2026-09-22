@@ -513,25 +513,249 @@ function resetEdit(){
 }
 
 $("cancel").onclick = () => {
+
     $("form").reset();
+
     clearTags();
+
     resetEdit();
+
+    msg("songMsg", "");
 };
 
 async function load(){let{data,error}=await db.from("songs").select("*").order("created_at",{ascending:false});if(error){songs=[];return msg("listMsg","楽曲取得失敗："+error.message)}songs=data||[];render();buildAllSuggestions()}
-function render(){let q=$("search").value.trim().toLowerCase(),g=$("fgame").value.trim().toLowerCase(),ge=$("fgenre").value.trim().toLowerCase(),b=$("fbpm").value===""?null:Number($("fbpm").value);
-let list=songs.filter(s=>{let t=[s.title,s.artist,s.game,s.genre,s.memo].filter(Boolean).join(" ").toLowerCase();if(q&&!t.includes(q))return false;if(g&&!(s.game||"").toLowerCase().includes(g))return false;if(ge&&!(s.genre||"").toLowerCase().includes(ge))return false;if(b!=null){if(s.bpm_min==null&&s.bpm_max==null)return false;if(s.bpm_min!=null&&b<Number(s.bpm_min))return false;if(s.bpm_max!=null&&b>Number(s.bpm_max))return false}return true});
-$("count").textContent=`${list.length}曲 / ${songs.length}曲`;$("songs").innerHTML="";if(!list.length){$("songs").innerHTML='<div class="card">該当する楽曲がありません。</div>';return}
-list.forEach(s=>{let x=document.createElement("article");x.className="song";let im=document.createElement("img");im.className="thumb";im.src=s.thumbnail||"";im.alt="";im.onerror=()=>im.style.visibility="hidden";
-let body=document.createElement("div"),t=document.createElement("div");t.className="title";t.textContent=s.title||"無題";body.append(t);let m=document.createElement("div");m.className="meta";m.textContent=[s.artist&&`作曲者：${s.artist}`,s.game&&`🎮 ${s.game}`,s.genre&&`🎵 ${s.genre}`,bpmText(s.bpm_min,s.bpm_max),s.duration!=null&&`⏱ ${duration(s.duration)}`].filter(Boolean).join("  |  ");body.append(m);
-if(s.memo){let z=document.createElement("div");z.className="memo";z.textContent=s.memo;body.append(z)}if(s.url){let l=document.createElement("a");l.href=s.url;l.target="_blank";l.rel="noopener";l.textContent="🔗 リンクを開く";body.append(l)}
-let ac=document.createElement("div");ac.className="actions song-actions";let ed=document.createElement("button");ed.className="secondary";ed.textContent="編集";ed.onclick=()=>edit(s);let de=document.createElement("button");de.className="danger";de.textContent="削除";de.onclick=()=>del(s);ac.append(ed,de);x.append(im,body,ac);$("songs").append(x)})}
+function render(){
+
+    const q = $("search").value.trim().toLowerCase();
+    const g = $("fgame").value.trim().toLowerCase();
+    const ge = $("fgenre").value.trim().toLowerCase();
+
+    const b = $("fbpm").value === ""
+        ? null
+        : Number($("fbpm").value);
+
+    let list = songs.filter(s => {
+
+        // タグを検索用の文字列にまとめる
+        const artists = Array.isArray(s.artist_tags)
+            ? s.artist_tags
+            : [];
+
+        const games = Array.isArray(s.game_tags)
+            ? s.game_tags
+            : [];
+
+        const genres = Array.isArray(s.genre_tags)
+            ? s.genre_tags
+            : [];
+
+        const memotags = Array.isArray(s.memo_tags)
+            ? s.memo_tags
+            : [];
+
+        const allText = [
+            s.title,
+            ...artists,
+            ...games,
+            ...genres,
+            ...memotags,
+            s.memo
+        ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+        // 全体検索
+        if(q && !allText.includes(q)){
+            return false;
+        }
+
+        // 原作音ゲー検索
+        if(
+            g &&
+            !games.some(tag =>
+                String(tag).toLowerCase().includes(g)
+            )
+        ){
+            return false;
+        }
+
+        // ジャンル検索
+        if(
+            ge &&
+            !genres.some(tag =>
+                String(tag).toLowerCase().includes(ge)
+            )
+        ){
+            return false;
+        }
+
+        // BPM検索
+        if(b != null){
+
+            if(
+                s.bpm_min == null &&
+                s.bpm_max == null
+            ){
+                return false;
+            }
+
+            if(
+                s.bpm_min != null &&
+                b < Number(s.bpm_min)
+            ){
+                return false;
+            }
+
+            if(
+                s.bpm_max != null &&
+                b > Number(s.bpm_max)
+            ){
+                return false;
+            }
+        }
+
+        return true;
+    });
+
+    $("count").textContent =
+        `${list.length}曲 / ${songs.length}曲`;
+
+    $("songs").innerHTML = "";
+
+    if(!list.length){
+        $("songs").innerHTML =
+            '<div class="card">該当する楽曲がありません。</div>';
+        return;
+    }
+
+    list.forEach(s => {
+
+        const x = document.createElement("article");
+        x.className = "song";
+
+        // サムネイル
+        const im = document.createElement("img");
+
+        im.className = "thumb";
+        im.src = s.thumbnail || "";
+        im.alt = "";
+
+        im.onerror = () => {
+            im.style.visibility = "hidden";
+        };
+
+        // 本文
+        const body = document.createElement("div");
+
+        // 曲名
+        const t = document.createElement("div");
+        t.className = "title";
+        t.textContent = s.title || "無題";
+
+        body.append(t);
+
+        // タグ
+        const artists = Array.isArray(s.artist_tags)
+            ? s.artist_tags
+            : [];
+
+        const games = Array.isArray(s.game_tags)
+            ? s.game_tags
+            : [];
+
+        const genres = Array.isArray(s.genre_tags)
+            ? s.genre_tags
+            : [];
+
+        const metaParts = [];
+
+        if(artists.length){
+            metaParts.push(
+                `作曲者：${artists.join(" / ")}`
+            );
+        }
+
+        if(games.length){
+            metaParts.push(
+                `🎮 ${games.join(" / ")}`
+            );
+        }
+
+        if(genres.length){
+            metaParts.push(
+                `🎵 ${genres.join(" / ")}`
+            );
+        }
+
+        metaParts.push(
+            bpmText(s.bpm_min, s.bpm_max)
+        );
+
+        if(s.duration != null){
+            metaParts.push(
+                `⏱ ${duration(s.duration)}`
+            );
+        }
+
+        const m = document.createElement("div");
+        m.className = "meta";
+        m.textContent = metaParts.join("  |  ");
+
+        body.append(m);
+
+        // 詳細メモ
+        if(s.memo){
+            const z = document.createElement("div");
+
+            z.className = "memo";
+            z.textContent = s.memo;
+
+            body.append(z);
+        }
+
+        // リンク
+        if(s.url){
+            const l = document.createElement("a");
+
+            l.href = s.url;
+            l.target = "_blank";
+            l.rel = "noopener";
+            l.textContent = "🔗 リンクを開く";
+
+            body.append(l);
+        }
+
+        // ボタン
+        const ac = document.createElement("div");
+        ac.className = "actions song-actions";
+
+        const ed = document.createElement("button");
+        ed.className = "secondary";
+        ed.textContent = "編集";
+        ed.onclick = () => edit(s);
+
+        const de = document.createElement("button");
+        de.className = "danger";
+        de.textContent = "削除";
+        de.onclick = () => del(s);
+
+        ac.append(ed, de);
+
+        x.append(im, body, ac);
+
+        $("songs").append(x);
+    });
+}
 function edit(s){
+
+    // 編集対象のID
     $("songId").value = s.id;
 
+    // 曲名
     $("title").value = s.title || "";
 
-    // タグを読み込む
+    // 保存済みタグを読み込む
     tagState.artist = Array.isArray(s.artist_tags)
         ? [...s.artist_tags]
         : [];
@@ -564,17 +788,22 @@ function edit(s){
     $("bpmMin").value = s.bpm_min ?? "";
     $("bpmMax").value = s.bpm_max ?? "";
     $("duration").value = s.duration ?? "";
+
     $("url").value = s.url || "";
     $("thumbnail").value = s.thumbnail || "";
+
     $("memo").value = s.memo || "";
 
-    // 編集モードに変更
+    // 編集モード
     $("formTitle").textContent = "✏️ 曲を編集";
     $("save").textContent = "更新";
+
     $("cancel").classList.remove("hidden");
 
+    // 候補も更新
     buildAllSuggestions();
 
+    // 上まで移動
     scrollTo({
         top: 0,
         behavior: "smooth"
