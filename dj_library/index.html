@@ -416,9 +416,14 @@ db.auth.onAuthStateChange(()=>ui());
 
 $("form").onsubmit = async ev => {
     ev.preventDefault();
-    msg("songMsg", "");
+
+    console.log("保存ボタンが押されました");
+
+    msg("songMsg", "保存処理中...");
 
     let { data: { user } } = await db.auth.getUser();
+
+    console.log("ユーザー:", user);
 
     if(!user){
         return msg("songMsg", "ログインしてください。");
