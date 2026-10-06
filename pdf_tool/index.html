@@ -28,7 +28,7 @@ button:hover,.pick:hover{filter:brightness(.96)}button:disabled{opacity:.45;curs
 .preview-tools{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:12px}.preview-tools span{min-width:100px;text-align:center;font-size:14px;color:var(--muted)}
 .empty{text-align:center;border:1px dashed var(--line);border-radius:12px;padding:28px;color:var(--muted)}
 .settings{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field{display:flex;flex-direction:column;gap:5px}.field label{font-size:14px;font-weight:600}.field input,.field select{padding:9px 11px;border:1px solid var(--line);border-radius:8px;font:inherit;background:white}
-.status{display:none;margin-top:14px;padding:11px 13px;border-radius:9px;background:#f3f4f6;white-space:pre-wrap;font-size:14px}.status.show{display:block}.status.error{background:#fef2f2;color:#991b1b}.status.success{background:#ecfdf5;color:#065f46}
+.status{display:none;margin-top:14px;padding:11px 13px;border-radius:9px;background:#f3f4f6;white-space:pre-wrap;font-size:14px}.status.show{display:block}.status.error{background:#fef2f2;color:#991b1b}.status.success{background:#ecfdf5;color:#065f46}.estimate-result{text-align:center;margin:12px 0 0;font-weight:650;color:#344054}
 footer{text-align:center;color:var(--muted);font-size:13px;margin-top:24px}
 input[type=file]{display:none}
 @media(max-width:760px){main{width:calc(100% - 20px);padding-top:18px}.workspace{grid-template-columns:1fr}.pages{max-height:430px}.settings{grid-template-columns:1fr}.card{padding:15px}.preview-wrap{min-height:300px}.page-row{grid-template-columns:20px 60px minmax(0,1fr)}.mini{width:60px;height:74px}}
@@ -62,7 +62,8 @@ input[type=file]{display:none}
 <div class="field"><label for="compression">写真の軽量化</label><select id="compression"><option value="standard">標準（おすすめ・長辺2500px / JPEG品質90%）</option><option value="light">軽量（長辺1800px / JPEG品質82%）</option><option value="original">元画像のまま（軽量化しない）</option></select></div>
 </div>
 <p class="hint" style="margin-top:12px">PDFページは元のサイズを保ちます。標準・軽量では写真を縮小して圧縮します。PNG画像は透明部分を保つためPNG形式で処理し、写真より容量が下がりにくい場合があります。元画像のままを選ぶと画像を加工しません。</p>
-<div class="actions"><button id="save" class="primary" disabled>📄 編集結果をPDFで保存</button></div>
+<div class="actions"><button id="estimate" class="secondary" disabled>📏 PDF容量を計算</button><button id="save" class="primary" disabled>📄 編集結果をPDFで保存</button></div>
+<p id="estimateResult" class="estimate-result" aria-live="polite">PDF容量：ページを追加して「PDF容量を計算」を押してください。</p>
 <div id="status" class="status" role="status"></div>
 </section>
 <footer>ブラウザ内でPDFを作成します。ファイルはサーバーへアップロードされません。</footer>
@@ -73,7 +74,7 @@ input[type=file]{display:none}
 const {PDFDocument,degrees}=PDFLib;
 pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 const $=id=>document.getElementById(id), list=$("list"), drop=$("drop"), input=$("files");
-let pages=[], selected=0, zoom=1, nextId=1, dragIndex=-1, renderToken=0;
+let pages=[], selected=0, zoom=1, nextId=1, dragIndex=-1, renderToken=0, cachedPdf=null;
 const supports=file=>file.type==="application/pdf"||file.type.startsWith("image/");
 $("add").onclick=()=>input.click();
 drop.addEventListener("click",e=>{if(e.target===drop||e.target.closest("h2,p"))input.click()});
@@ -131,7 +132,8 @@ function draw(){
   list.append(row);
  });
  $("count").textContent=pages.length+"ページ";
- $("clear").disabled=$("save").disabled=!pages.length;
+ $("clear").disabled=$("save").disabled=$("estimate").disabled=!pages.length;
+ refreshEstimateState();
  $("prev").disabled=selected<=0;$("next").disabled=selected>=pages.length-1;
  $("pageLabel").textContent=pages.length?(selected+1)+" / "+pages.length:"0 / 0";
  $("selection").textContent=pages.length?pages[selected].name:"ページ未選択";
@@ -167,25 +169,48 @@ async function renderPreview(){
 }
 function setStatus(text,type=""){const s=$("status");s.textContent=text;s.className="status show"+(type?" "+type:"")}
 function clearStatus(){$("status").textContent="";$("status").className="status"}
-$("size").addEventListener("change",()=>{});window.addEventListener("resize",()=>renderPreview());
+$("size").addEventListener("change",refreshEstimateState);$("orientation").addEventListener("change",refreshEstimateState);$("compression").addEventListener("change",refreshEstimateState);window.addEventListener("resize",()=>renderPreview());
+$("estimate").onclick=calculateSize;
 $("save").onclick=savePDF;
-async function savePDF(){
- $("save").disabled=$("clear").disabled=true;setStatus("PDFを作成しています…");
+function currentSignature(){return JSON.stringify({pages:pages.map(p=>[p.id,p.rotation]),size:$("size").value,orientation:$("orientation").value,compression:$("compression").value})}
+function refreshEstimateState(){
+ if(cachedPdf&&cachedPdf.signature!==currentSignature())cachedPdf=null;
+ $("estimateResult").textContent=cachedPdf?"PDF容量（実測）: "+formatBytes(cachedPdf.bytes.byteLength)+"。この内容で保存できます。":"PDF容量：未計算です。現在の設定で計算してください。";
+}
+async function buildPDFBytes(){
+ const out=await PDFDocument.create();
+ for(let i=0;i<pages.length;i++){
+  const p=pages[i];setStatus("PDFを作成しています… ("+(i+1)+"/"+pages.length+") "+p.name);
+  if(p.type==="pdf"){
+   const src=await PDFDocument.load(p.data.slice(0)),[copied]=await out.copyPages(src,[p.pageIndex]);
+   if(p.rotation)copied.setRotation(degrees(((p.baseRotation||0)+p.rotation)%360));
+   out.addPage(copied);
+  }else await appendImage(out,p);
+ }
+ return out.save();
+}
+async function calculateSize(){
+ if(!pages.length)return;
+ const signature=currentSignature();$("estimate").disabled=$("save").disabled=true;setStatus("選択した設定でPDFを組み立てて容量を計算しています…");
  try{
-  const out=await PDFDocument.create();
-  for(let i=0;i<pages.length;i++){
-   const p=pages[i];setStatus("PDFを作成しています… ("+(i+1)+"/"+pages.length+") "+p.name);
-   if(p.type==="pdf"){
-    const src=await PDFDocument.load(p.data.slice(0)),[copied]=await out.copyPages(src,[p.pageIndex]);
-    if(p.rotation)copied.setRotation(degrees(((p.baseRotation||0)+p.rotation)%360));
-    out.addPage(copied);
-   }else await appendImage(out,p);
-  }
-  const bytes=await out.save(),url=URL.createObjectURL(new Blob([bytes],{type:"application/pdf"})),a=document.createElement("a");
+  const bytes=await buildPDFBytes();
+  if(signature===currentSignature()){
+   cachedPdf={signature,bytes};refreshEstimateState();setStatus("容量を計算しました。保存時はこのPDFデータをそのまま使います。","success");
+  }else{cachedPdf=null;refreshEstimateState();setStatus("計算中にページまたは設定が変更されたため、もう一度容量を計算してください。","error")}
+ }catch(err){console.error(err);setStatus("容量の計算中にエラーが発生しました。"+(err.message?"\n"+err.message:""),"error")}
+ finally{$("estimate").disabled=$("save").disabled=!pages.length}
+}
+async function savePDF(){
+ if(!pages.length)return;
+ $("save").disabled=$("estimate").disabled=$("clear").disabled=true;setStatus("PDFを準備しています…");
+ try{
+  const signature=currentSignature();
+  const bytes=cachedPdf&&cachedPdf.signature===signature?cachedPdf.bytes:await buildPDFBytes();
+  const url=URL.createObjectURL(new Blob([bytes],{type:"application/pdf"})),a=document.createElement("a");
   a.href=url;a.download=normalizeName($("filename").value);document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1200);
-  setStatus("完成しました。"+pages.length+"ページのPDFを保存しました。","success");
+  cachedPdf={signature,bytes};refreshEstimateState();setStatus("完成しました。"+pages.length+"ページのPDFを保存しました。","success");
  }catch(err){console.error(err);setStatus("PDFの作成中にエラーが発生しました。"+(err.message?"\n"+err.message:""),"error")}
- finally{$("save").disabled=$("clear").disabled=!pages.length}
+ finally{$("save").disabled=$("estimate").disabled=$("clear").disabled=!pages.length}
 }
 async function appendImage(out,p){
  let image;
@@ -225,6 +250,7 @@ async function convertToJpeg(file){
  const ctx=c.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,c.width,c.height);ctx.drawImage(bmp,0,0);bmp.close();
  const blob=await new Promise((res,rej)=>c.toBlob(b=>b?res(b):rej(Error("画像を変換できません")),"image/jpeg",.95));return blob.arrayBuffer()
 }
+function formatBytes(bytes){if(bytes<1024)return bytes+" B";const units=["KB","MB","GB"];let value=bytes/1024,index=0;while(value>=1024&&index<units.length-1){value/=1024;index++}return value.toFixed(2)+" "+units[index]}
 function normalizeName(name){let n=(name||"merged.pdf").trim()||"merged.pdf";if(!n.toLowerCase().endsWith(".pdf"))n+=".pdf";return n.replace(/[<>:"/\\|?*\x00-\x1f]/g,"_")}
 draw();
 })();
